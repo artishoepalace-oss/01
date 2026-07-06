@@ -14,7 +14,7 @@ jobs:
   build-debug:
     name: Build Debug APK + AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Repository
@@ -22,10 +22,33 @@ jobs:
 
       - name: Show Repository Files
         run: |
-          echo "Repository root:"
+          echo "Repo files:"
           ls -la
-          echo "Searching project files:"
-          find . -maxdepth 4 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" \)
+          echo "Zip files:"
+          find . -maxdepth 2 -type f -name "*.zip" || true
+
+      - name: Extract ZIP If Needed
+        run: |
+          PROJECT_SETTINGS=$(find . -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)
+
+          if [ -n "$PROJECT_SETTINGS" ]; then
+            echo "Android project already extracted."
+            exit 0
+          fi
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No Android project and no ZIP file found."
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+          mkdir -p extracted_app
+          unzip -q "$ZIP_FILE" -d extracted_app
+
+          echo "After unzip:"
+          find extracted_app -maxdepth 5 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" \)
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -44,17 +67,17 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
 
       - name: Find Android Project
         run: |
           PROJECT_SETTINGS=$(find . -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)
 
           if [ -z "$PROJECT_SETTINGS" ]; then
-            echo "ERROR: settings.gradle file not found."
-            echo "Fix: ZIP ko extract karke uske andar wale folders GitHub me upload karo."
-            echo "GitHub repo me direct .zip file upload karne se APK nahi banega."
+            echo "ERROR: settings.gradle not found even after unzip."
             echo "Current files:"
-            find . -maxdepth 3 -type f
+            find . -maxdepth 5 -type f
             exit 1
           fi
 
@@ -82,6 +105,7 @@ jobs:
       - name: Build Debug APK
         run: |
           cd "$PROJECT_DIR"
+
           if [ -f "./gradlew" ]; then
             ./gradlew --no-daemon --stacktrace :app:assembleDebug
           else
@@ -91,6 +115,7 @@ jobs:
       - name: Build Debug AAB
         run: |
           cd "$PROJECT_DIR"
+
           if [ -f "./gradlew" ]; then
             ./gradlew --no-daemon --stacktrace :app:bundleDebug
           else
